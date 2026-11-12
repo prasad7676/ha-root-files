@@ -1,0 +1,58 @@
+name: Root File Explorer
+version: 1.0.0
+slug: root_files
+description: Browse Home Assistant, USB drives, and the host system from the sidebar
+url: https://github.com/prasad7676/ha-root-files
+arch:
+  - aarch64
+  - amd64
+  - armv7
+  - armhf
+startup: application
+boot: auto
+init: false
+ingress: true
+ingress_port: 8099
+ingress_stream: true
+panel_icon: mdi:folder-cog
+panel_title: Files
+panel_admin: true
+timeout: 30
+watchdog: tcp://[HOST]:[PORT:8099]
+backup: cold
+full_access: true
+host_pid: true
+apparmor: false
+privileged:
+  - SYS_ADMIN
+  - SYS_PTRACE
+  - DAC_READ_SEARCH
+  - SYS_RAWIO
+map:
+  - type: homeassistant_config
+    read_only: false
+    path: /config
+  - type: media
+    read_only: false
+    path: /media
+  - type: share
+    read_only: false
+    path: /share
+  - type: backup
+    read_only: false
+    path: /backup
+  - type: ssl
+    read_only: false
+    path: /ssl
+  - type: addons
+    read_only: false
+    path: /addons
+  - type: all_addon_configs
+    read_only: false
+    path: /addon_configs
+options:
+  show_host: true
+  mount_usb: true
+schema:
+  show_host: bool
+  mount_usb: bool

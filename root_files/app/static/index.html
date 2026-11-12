@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Files</title>
+  <link rel="stylesheet" href="static/app.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+          <path fill="currentColor" d="M4 10.5A3.5 3.5 0 0 1 7.5 7H13l2.2 2.4H24.5A3.5 3.5 0 0 1 28 12.9V22a3.5 3.5 0 0 1-3.5 3.5h-17A3.5 3.5 0 0 1 4 22V10.5Z"/>
+          <rect x="18" y="15" width="8" height="5.5" rx="1.2" fill="#1a1408"/>
+        </svg>
+        <div>
+          <div class="brand-name">Files</div>
+          <div class="brand-note">Config, USB, and the host</div>
+        </div>
+      </div>
+      <nav id="places"></nav>
+      <div class="side-foot">
+        <button id="theme" type="button">Light</button>
+        <p id="host-note"></p>
+      </div>
+    </aside>
+    <section class="workspace" id="workspace">
+      <header class="top">
+        <div id="crumbs" class="crumbs"></div>
+        <div class="find">
+          <input id="filter" type="search" placeholder="Filter" aria-label="Filter">
+          <label class="deep"><input id="deep" type="checkbox"> Subfolders</label>
+        </div>
+      </header>
+      <div id="banner" class="banner" hidden></div>
+      <div id="toolbar" class="toolbar"></div>
+      <div id="clipbar" class="clipbar" hidden></div>
+      <div class="stage" id="stage">
+        <div id="list" class="list"></div>
+        <aside id="preview" class="preview" hidden></aside>
+      </div>
+      <footer id="status" class="status"></footer>
+      <div id="drop" class="drop" hidden>Drop files to upload into this folder</div>
+    </section>
+  </div>
+  <div id="modal" class="modal" hidden></div>
+  <div id="menu" class="menu" hidden></div>
+  <div id="toast" class="toast" hidden></div>
+  <script src="static/app.js"></script>
+</body>
+</html>
