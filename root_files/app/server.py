@@ -333,11 +333,25 @@ def display_path(place: dict, raw: str) -> str:
     return f"{root}/{rel}" if rel else root
 
 
-def is_dir(path: Path) -> bool:
+def followed_kind(path: Path) -> str:
+    """What a path points at, after following a symlink.
+
+    Path.is_dir(follow_symlinks=...) needs Python 3.13. The add-on image
+    is Debian bookworm, which ships 3.11, so this uses stat instead.
+    """
     try:
-        return path.is_dir(follow_symlinks=True)
+        info = path.stat()
     except OSError:
-        return False
+        return ""
+    if stat.S_ISDIR(info.st_mode):
+        return "dir"
+    if stat.S_ISREG(info.st_mode):
+        return "file"
+    return "other"
+
+
+def is_dir(path: Path) -> bool:
+    return followed_kind(path) == "dir"
 
 
 def entry_info(path: Path) -> dict:
@@ -356,13 +370,11 @@ def entry_info(path: Path) -> dict:
             "error": exc.strerror or "unreadable",
         }
     kind = "link" if link else "other"
-    try:
-        if path.is_dir(follow_symlinks=True):
-            kind = "dir"
-        elif path.is_file(follow_symlinks=True):
-            kind = "file"
-    except OSError:
-        kind = "link" if link else "other"
+    followed = followed_kind(path)
+    if followed == "dir":
+        kind = "dir"
+    elif followed == "file":
+        kind = "file"
     return {
         "name": path.name,
         "type": kind,

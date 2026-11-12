@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.1
+
+- Folder listing works on the Python 3.11 image Home Assistant builds.
+
 ## 1.0.0
 
 - Sidebar file manager for Config, media, share, backups, certificates, and add-ons.
