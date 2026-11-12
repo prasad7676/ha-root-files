@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -180,34 +181,140 @@ def mounted_sources() -> set[str]:
     return found
 
 
-def media_mounts(lines: list[str] | None = None) -> list[dict]:
-    """Disks Home Assistant already mounted under /media via Settings, System, Storage."""
-    if lines is None:
-        try:
-            lines = Path("/proc/mounts").read_text(encoding="utf-8", errors="replace").splitlines()
-        except OSError:
-            return []
-    found: list[dict] = []
-    seen: set[str] = set()
+# Home Assistant puts a Storage disk one folder down from these.
+# Backup disks that are not shared with apps stay on the host under mounts/.
+_CONTAINER_ROOTS = ("/media/", "/share/", "/backup/")
+_HOST_ROOTS = {
+    "/mnt/data/supervisor/media/": "/media/",
+    "/mnt/data/supervisor/share/": "/share/",
+    "/mnt/data/supervisor/backup/": "/backup/",
+    "/mnt/data/supervisor/mounts/": "/mnt/data/supervisor/mounts/",
+}
+
+
+def _mount_fields(line: str) -> tuple[str, str, str] | None:
+    """Return source, target, fstype from a /proc/mounts or mountinfo line."""
+    if " - " in line:
+        left, right = line.split(" - ", 1)
+        left_parts = left.split()
+        right_parts = right.split()
+        if len(left_parts) < 5 or len(right_parts) < 2:
+            return None
+        return unescape_mount(right_parts[1]), unescape_mount(left_parts[4]), right_parts[0]
+    parts = line.split()
+    if len(parts) < 3:
+        return None
+    return unescape_mount(parts[0]), unescape_mount(parts[1]), parts[2]
+
+
+def _storage_target(target: str) -> str | None:
+    """Map a host or container mount path to the folder the app should open."""
+    target = target.rstrip("/") or "/"
+    for prefix in _CONTAINER_ROOTS:
+        if target.startswith(prefix) and target.count("/") == 2:
+            return target
+    for host_prefix, container_prefix in _HOST_ROOTS.items():
+        if target.startswith(host_prefix) and target.count("/") == host_prefix.count("/"):
+            return container_prefix + target[len(host_prefix):]
+    return None
+
+
+def storage_from_lines(lines: list[str]) -> list[dict]:
+    """Storage disks already mounted by Home Assistant, one entry per folder."""
+    found: dict[str, dict] = {}
     for line in lines:
-        parts = line.split()
-        if len(parts) < 3:
+        fields = _mount_fields(line)
+        if fields is None:
             continue
-        target = unescape_mount(parts[1])
-        if not target.startswith("/media/") or target.count("/") != 2:
+        source, target, fstype = fields
+        path = _storage_target(target)
+        if path is None:
             continue
-        if target in seen:
+        current = found.get(path)
+        # An autofs trigger sits on the folder until the disk is opened.
+        # Prefer the real filesystem when both lines are present.
+        if current is not None and current["fstype"] != "autofs":
             continue
-        seen.add(target)
-        found.append(
-            {
-                "source": unescape_mount(parts[0]),
-                "path": target,
-                "fstype": parts[2],
-                "name": Path(target).name,
-            }
-        )
-    return found
+        if current is not None and fstype == "autofs":
+            continue
+        found[path] = {
+            "source": source,
+            "path": path,
+            "fstype": fstype,
+            "name": Path(path).name,
+        }
+    return list(found.values())
+
+
+def _read_mount_lines() -> list[str]:
+    lines: list[str] = []
+    for path in (Path("/proc/self/mountinfo"), Path("/proc/mounts"), Path("/proc/1/mountinfo"), Path("/proc/1/mounts")):
+        try:
+            lines.extend(path.read_text(encoding="utf-8", errors="replace").splitlines())
+        except OSError:
+            continue
+    return lines
+
+
+def _dir_device(path: Path) -> int | None:
+    try:
+        info = path.stat()
+    except OSError:
+        return None
+    if not stat.S_ISDIR(info.st_mode):
+        return None
+    return info.st_dev
+
+
+def storage_mounts(lines: list[str] | None = None) -> list[dict]:
+    """Disks from Settings → System → Storage.
+
+    Passed lines are parsed and returned as-is, for tests. Live discovery
+    also stats each folder under /media, /share, and /backup, because
+    Home Assistant leaves an autofs trigger there and the disk does not
+    appear in the mount table until that folder is opened.
+    """
+    if lines is not None:
+        return storage_from_lines(lines)
+
+    found = {item["path"]: item for item in storage_from_lines(_read_mount_lines())}
+    for root in ("/media", "/share", "/backup"):
+        root_path = Path(root)
+        parent_dev = _dir_device(root_path)
+        if parent_dev is None:
+            continue
+        try:
+            children = list(root_path.iterdir())
+        except OSError:
+            continue
+        for child in children:
+            child_dev = _dir_device(child)
+            if child_dev is None or child_dev == parent_dev:
+                continue
+            path = str(child)
+            found.setdefault(
+                path,
+                {"source": "", "path": path, "fstype": "", "name": child.name},
+            )
+    # Statting the folder wakes the disk, so read the table again for exFAT/NTFS.
+    for item in storage_from_lines(_read_mount_lines()):
+        current = found.get(item["path"])
+        if current is None:
+            found[item["path"]] = item
+        elif item["fstype"] and item["fstype"] != "autofs":
+            current["fstype"] = item["fstype"]
+            current["source"] = item["source"] or current["source"]
+
+    visible: list[dict] = []
+    for item in found.values():
+        path = Path(item["path"])
+        if _dir_device(path) is None:
+            path = Path("/proc/1/root") / item["path"].lstrip("/")
+            if _dir_device(path) is None:
+                continue
+            item = {**item, "path": str(path)}
+        visible.append(item)
+    return visible
 
 
 def read_options() -> dict:
@@ -326,6 +433,9 @@ def mount_all() -> dict:
                 lines.append(f"Mounted {pretty} ({plan.fstype}) at {target}.")
         if not plans and not any(line.startswith("Could not list") for line in lines):
             lines.append("No extra disk needed mounting.")
+        for item in storage_mounts():
+            kind = item["fstype"] or "mounted"
+            lines.append(f"Storage {item['name']} is available at {item['path']} ({kind}).")
     else:
         lines.append("USB mounting is turned off in the add-on options.")
     status = {"host_ok": host_ok, "host_message": host_message, "lines": lines[-200:]}

@@ -245,7 +245,7 @@ def all_places() -> list[dict]:
             )
 
     if demo is None:
-        for item in mounts.media_mounts():
+        for item in mounts.storage_mounts():
             path = Path(item["path"])
             if not path.is_dir():
                 continue

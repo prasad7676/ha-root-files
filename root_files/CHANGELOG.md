@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.2
+
+- Disks added in Settings → System → Storage show up from Media, Share, and Backups.
+
 ## 1.0.1
 
 - Folder listing works on the Python 3.11 image Home Assistant builds.

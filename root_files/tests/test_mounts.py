@@ -80,11 +80,17 @@ class MountPlanTest(unittest.TestCase):
             "/dev/sda1 /media/POOL\\040CAM exfat rw 0 0",
             "overlay /media/POOL\\040CAM/nested ext4 rw 0 0",
             "/dev/sda1 /mnt/data ext4 rw 0 0",
+            "systemd-1 /share/HA autofs rw 0 0",
+            "/dev/sdb1 /share/HA exfat rw 0 0",
+            "/dev/sdc1 /mnt/data/supervisor/backup/nightly ext4 rw 0 0",
+            "45 23 0:45 / /backup/clips rw shared:1 - exfat /dev/sdd1 rw",
         ]
-        found = mounts.media_mounts(lines)
-        self.assertEqual(len(found), 1)
-        self.assertEqual(found[0]["path"], "/media/POOL CAM")
-        self.assertEqual(found[0]["fstype"], "exfat")
+        found = {item["path"]: item for item in mounts.storage_mounts(lines)}
+        self.assertEqual(found["/media/POOL CAM"]["fstype"], "exfat")
+        self.assertEqual(found["/share/HA"]["fstype"], "exfat")
+        self.assertEqual(found["/backup/nightly"]["name"], "nightly")
+        self.assertEqual(found["/backup/clips"]["fstype"], "exfat")
+        self.assertNotIn("/mnt/data", found)
 
 
 if __name__ == "__main__":
