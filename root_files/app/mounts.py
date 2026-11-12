@@ -18,6 +18,7 @@ from pathlib import Path
 ALLOWED_FS = {"ext2", "ext3", "ext4", "vfat", "exfat", "ntfs", "ntfs3", "msdos"}
 USB_ROOT = Path("/places/usb")
 HOST_ROOT = Path("/places/host")
+STORAGE_ROOT = Path("/places/storage")
 STATUS_PATHS = (Path("/data/mount-status.json"), Path("/tmp/root-files-mount-status.json"))
 
 
@@ -256,6 +257,26 @@ def _read_mount_lines() -> list[str]:
     return lines
 
 
+def expose_storage(item: dict) -> dict:
+    """Bind a host-only Storage disk into this container so the file list can open it.
+
+    /proc/1/root is a magic symlink. stat() can see through it, but
+    resolving the path turns it into /mnt/data/... which does not exist
+    in the add-on.
+    """
+    text = item["path"]
+    if not text.startswith("/proc/1/root/"):
+        return item
+    STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
+    target = STORAGE_ROOT / (sanitize_name(item["name"]) or "disk")
+    target.mkdir(parents=True, exist_ok=True)
+    if not is_mountpoint(target):
+        error = _run_mount([["mount", "--bind", text, str(target)]])
+        if error:
+            return item
+    return {**item, "path": str(target)}
+
+
 def _dir_device(path: Path) -> int | None:
     try:
         info = path.stat()
@@ -313,7 +334,7 @@ def storage_mounts(lines: list[str] | None = None) -> list[dict]:
             if _dir_device(path) is None:
                 continue
             item = {**item, "path": str(path)}
-        visible.append(item)
+        visible.append(expose_storage(item))
     return visible
 
 
@@ -449,6 +470,8 @@ def unmount_all() -> None:
     targets: list[Path] = []
     if USB_ROOT.is_dir():
         targets.extend(sorted((path for path in USB_ROOT.iterdir() if path.is_dir()), reverse=True))
+    if STORAGE_ROOT.is_dir():
+        targets.extend(sorted((path for path in STORAGE_ROOT.iterdir() if path.is_dir()), reverse=True))
     targets.append(HOST_ROOT)
     for target in targets:
         if not is_mountpoint(target):

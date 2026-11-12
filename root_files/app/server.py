@@ -263,7 +263,7 @@ def all_places() -> list[dict]:
                     "ejectable": False,
                     "detail": " · ".join(bit for bit in bits if bit),
                     "reason": "",
-                    "display_root": "/media/" + label,
+                    "display_root": label,
                 }
             )
 

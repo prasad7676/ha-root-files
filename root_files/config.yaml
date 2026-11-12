@@ -1,5 +1,5 @@
 name: Root File Explorer
-version: 1.0.2
+version: 1.0.3
 slug: root_files
 description: Browse Home Assistant, USB drives, and the host system from the sidebar
 url: https://github.com/prasad7676/ha-root-files
