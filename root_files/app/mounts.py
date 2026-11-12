@@ -443,15 +443,15 @@ def mount_host(show: bool) -> tuple[bool, str]:
 
 
 def disk_media_body(item: dict) -> dict | None:
-    """Return a Supervisor update that shares an unassigned disk as Media.
+    """Return a Supervisor update that shares a local disk as Media.
 
-    Media and Share already appear in the add-on. Backup stays a backup.
-    A disk with no use is only mounted on the host, so Files cannot open
-    it while Protection mode is on.
+    Media and Share already appear in the add-on. A local disk set as a
+    backup, or with no use, stays on the host and Files cannot open it
+    while Protection mode is on.
     """
     if not isinstance(item, dict) or item.get("type") != "disk":
         return None
-    if item.get("usage") in {"media", "share", "backup"}:
+    if item.get("usage") in {"media", "share"}:
         return None
     name = str(item.get("name") or "")
     if not name:
@@ -491,7 +491,7 @@ def _supervisor(method: str, path: str, body: dict | None = None) -> tuple[dict 
 
 
 def share_unassigned_disks() -> list[str]:
-    """Make a Storage disk with no use show up under Media."""
+    """Make a local Storage disk show up under Media."""
     listed, error = _supervisor("GET", "/mounts")
     if error:
         return [f"Could not read Storage: {error}"]
@@ -505,18 +505,27 @@ def share_unassigned_disks() -> list[str]:
         if not isinstance(item, dict) or item.get("type") != "disk":
             continue
         name = str(item.get("name") or "disk")
-        if item.get("usage") == "backup":
-            notes.append(
-                f"{name} is set as a backup disk. Set it to Media in Settings → System → Storage "
-                "if it should stay in Files while Protection mode is on."
-            )
-            continue
         body = disk_media_body(item)
         if body is None:
             continue
+        if item.get("usage") == "backup" and listed.get("default_backup_mount") == name:
+            _options, options_error = _supervisor(
+                "POST",
+                "/mounts/options",
+                {"default_backup_mount": None},
+            )
+            if options_error:
+                notes.append(f"Could not move backups off {name}: {options_error}")
+                continue
         _updated, put_error = _supervisor("PUT", f"/mounts/{name}", body)
         if put_error:
             notes.append(f"Could not share {name} as Media: {put_error}")
+        elif item.get("usage") == "backup":
+            notes.append(
+                f"Shared {name} as Media instead of a backup disk. "
+                "The files stay on the disk. New backups stay in Home Assistant. "
+                "Restart the app if it is not under Disks yet."
+            )
         else:
             notes.append(f"Shared {name} as Media. Restart the app if it is not under Disks yet.")
     return notes

@@ -12,14 +12,14 @@ The add-on is built on the Home Assistant machine. Leave a couple of GB free. Th
 2. Add `https://github.com/prasad7676/ha-root-files` and open Root File Explorer.
 3. Install it. The build can take several minutes.
 4. If you do not see a Protection mode switch, open your profile (bottom left) and turn on Advanced mode, then come back.
-5. Leave Protection mode on. Config, Media, Share, Backups, and disks set to Media or Share in Storage work with it on.
+5. Leave Protection mode on. Config, Media, Share, Backups, and local Storage disks work with it on. A local disk that was set as a backup is shared as Media so Files can open it. New backups stay in Home Assistant.
 6. Start it. On the app page, turn on Show in sidebar. The entry is named Files.
 
 Turn Protection mode off only when you need Host, the machine's own files. Turn on Show the host system in the add-on configuration, restart, use Host, then turn Protection mode back on.
 
 To install without GitHub, copy the `root_files` folder onto the Samba `addons` share so `config.yaml` is at `addons/root_files/config.yaml`, then Check for updates and install the local app.
 
-Config, media, share, backups, certificates, and add-ons are there with Protection mode on. A disk you set to Media or Share under Settings → System → Storage is there too. A disk that is only mounted on the host, and the Host place itself, need Protection mode off.
+Config, media, share, backups, certificates, and add-ons are there with Protection mode on. A local disk from Settings → System → Storage is there too. The Host place needs Protection mode off.
 
 ## Options
 
