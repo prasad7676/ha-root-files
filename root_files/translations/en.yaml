@@ -3,5 +3,5 @@ configuration:
     name: Show the host system
     description: Mount the machine's own files so the Host place can browse them. Requires Protection mode off.
   mount_usb:
-    name: Mount USB drives
-    description: Mount USB and other extra disks that are not the Home Assistant system disk. FAT, exFAT, NTFS, and ext4 work. Mac APFS drives do not.
+    name: Mount attached disks
+    description: Mount USB, SATA, NVMe, and SD disks that are not the Home Assistant system disk. FAT, exFAT, NTFS, and ext4 work. Mac APFS disks do not.

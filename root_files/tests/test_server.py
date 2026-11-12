@@ -68,7 +68,7 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(status, 200)
         ids = {place["id"] for place in data["places"]}
         self.assertIn("config", ids)
-        self.assertIn("usb-POOL-CAM", ids)
+        self.assertIn("disk-POOL-CAM", ids)
         self.assertIn("host", ids)
         host = next(place for place in data["places"] if place["id"] == "host")
         self.assertTrue(host["available"])

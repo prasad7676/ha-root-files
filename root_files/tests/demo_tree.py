@@ -38,7 +38,7 @@ def build_demo(root: Path) -> None:
     (root / "ssl").mkdir()
     (root / "addons").mkdir()
     (root / "addon_configs").mkdir()
-    photos = root / "places" / "usb" / "POOL-CAM" / "photos"
+    photos = root / "places" / "disks" / "POOL-CAM" / "photos"
     photos.mkdir(parents=True)
     (photos / "note.txt").write_text("pool camera\n", encoding="utf-8")
     (photos / "pool.png").write_bytes(_png(8, 8, (224, 160, 69, 255)))

@@ -2,7 +2,7 @@
 
 Home Assistant's own folders are already mounted by the Supervisor.
 The host root is reached through process 1 when Protection mode is off
-and this add-on shares the host process namespace. USB sticks are
+and this add-on shares the host process namespace. Attached disks are
 mounted here only when they are not the Home Assistant system disk.
 """
 
@@ -16,14 +16,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ALLOWED_FS = {"ext2", "ext3", "ext4", "vfat", "exfat", "ntfs", "ntfs3", "msdos"}
-USB_ROOT = Path("/places/usb")
+DISK_ROOT = Path("/places/disks")
 HOST_ROOT = Path("/places/host")
 STORAGE_ROOT = Path("/places/storage")
 STATUS_PATHS = (Path("/data/mount-status.json"), Path("/tmp/root-files-mount-status.json"))
 
 
 @dataclass
-class UsbPlan:
+class DiskPlan:
     source: str
     label: str
     fstype: str
@@ -68,9 +68,12 @@ def disk_is_system(node: dict) -> bool:
     return any(label.startswith("hassos") for label in labels)
 
 
-def plan_usb_mounts(disks: list[dict], mounted: set[str]) -> tuple[list[UsbPlan], list[str]]:
-    """Decide which disks to mount. The Home Assistant system disk is never included."""
-    plans: list[UsbPlan] = []
+def plan_disk_mounts(disks: list[dict], mounted: set[str]) -> tuple[list[DiskPlan], list[str]]:
+    """Decide which attached disks to mount. USB, SATA, NVMe, and SD are treated the same.
+
+    The Home Assistant system disk is never included.
+    """
+    plans: list[DiskPlan] = []
     notes: list[str] = []
     used: set[str] = set()
 
@@ -104,7 +107,7 @@ def plan_usb_mounts(disks: list[dict], mounted: set[str]) -> tuple[list[UsbPlan]
                 notes.append(f"Skipping {label or path}: it is already mounted.")
             else:
                 plans.append(
-                    UsbPlan(
+                    DiskPlan(
                         source=path,
                         label=label,
                         fstype=fstype,
@@ -123,7 +126,7 @@ def plan_usb_mounts(disks: list[dict], mounted: set[str]) -> tuple[list[UsbPlan]
     return plans, notes
 
 
-def mount_commands(plan: UsbPlan, target: str) -> list[list[str]]:
+def mount_commands(plan: DiskPlan, target: str) -> list[list[str]]:
     common = "rw,nosuid,nodev,noexec"
     if plan.fstype in {"vfat", "msdos"}:
         fat = common + ",utf8,uid=0,gid=0,umask=000"
@@ -436,11 +439,11 @@ def mount_all() -> dict:
         except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
             disks = []
             lines.append(f"Could not list disks: {exc}")
-        plans, notes = plan_usb_mounts(disks, mounted_sources())
+        plans, notes = plan_disk_mounts(disks, mounted_sources())
         lines.extend(notes)
-        USB_ROOT.mkdir(parents=True, exist_ok=True)
+        DISK_ROOT.mkdir(parents=True, exist_ok=True)
         for plan in plans:
-            target = USB_ROOT / plan.target_name
+            target = DISK_ROOT / plan.target_name
             target.mkdir(parents=True, exist_ok=True)
             error = _run_mount(mount_commands(plan, str(target)))
             if error:
@@ -458,7 +461,7 @@ def mount_all() -> dict:
             kind = item["fstype"] or "mounted"
             lines.append(f"Storage {item['name']} is available at {item['path']} ({kind}).")
     else:
-        lines.append("USB mounting is turned off in the add-on options.")
+        lines.append("Attached disks are not mounted. Turn that option on, then restart.")
     status = {"host_ok": host_ok, "host_message": host_message, "lines": lines[-200:]}
     _write_status(status)
     for line in lines:
@@ -468,8 +471,8 @@ def mount_all() -> dict:
 
 def unmount_all() -> None:
     targets: list[Path] = []
-    if USB_ROOT.is_dir():
-        targets.extend(sorted((path for path in USB_ROOT.iterdir() if path.is_dir()), reverse=True))
+    if DISK_ROOT.is_dir():
+        targets.extend(sorted((path for path in DISK_ROOT.iterdir() if path.is_dir()), reverse=True))
     if STORAGE_ROOT.is_dir():
         targets.extend(sorted((path for path in STORAGE_ROOT.iterdir() if path.is_dir()), reverse=True))
     targets.append(HOST_ROOT)
@@ -482,7 +485,7 @@ def unmount_all() -> None:
 
 
 def eject(target: Path) -> None:
-    if not str(target).startswith(str(USB_ROOT) + os.sep):
+    if not str(target).startswith(str(DISK_ROOT) + os.sep):
         raise ValueError("Only disks mounted by this add-on can be ejected.")
     if not is_mountpoint(target):
         raise ValueError("That drive is not mounted.")

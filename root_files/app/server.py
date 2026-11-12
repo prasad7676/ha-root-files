@@ -1,4 +1,4 @@
-"""Sidebar file manager for Home Assistant, USB drives, and the host system.
+"""Sidebar file manager for Home Assistant, attached disks, and the host system.
 
 Only the Supervisor (172.30.32.2) can connect. Home Assistant already
 authenticated the person before proxying the request.
@@ -220,9 +220,9 @@ def all_places() -> list[dict]:
             }
         )
 
-    usb_root = (demo / "places" / "usb") if demo else mounts.USB_ROOT
-    if usb_root.is_dir():
-        for child in sorted(usb_root.iterdir(), key=lambda item: item.name.lower()):
+    disk_root = (demo / "places" / "disks") if demo else mounts.DISK_ROOT
+    if disk_root.is_dir():
+        for child in sorted(disk_root.iterdir(), key=lambda item: item.name.lower()):
             if not child.is_dir():
                 continue
             if demo is None and not mounts.is_mountpoint(child):
@@ -230,17 +230,17 @@ def all_places() -> list[dict]:
             detail = _usage_text(child)
             places.append(
                 {
-                    "id": "usb-" + child.name,
+                    "id": "disk-" + child.name,
                     "name": child.name,
-                    "group": "USB",
-                    "kind": "usb",
+                    "group": "Disks",
+                    "kind": "disk",
                     "path": child,
                     "available": True,
                     "writable": True,
                     "ejectable": demo is None,
                     "detail": detail,
                     "reason": "",
-                    "display_root": "USB/" + child.name,
+                    "display_root": child.name,
                 }
             )
 
@@ -255,7 +255,7 @@ def all_places() -> list[dict]:
                 {
                     "id": "storage-" + mounts.sanitize_name(label),
                     "name": label,
-                    "group": "USB",
+                    "group": "Disks",
                     "kind": "media",
                     "path": path,
                     "available": True,

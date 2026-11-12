@@ -28,10 +28,43 @@ class MountPlanTest(unittest.TestCase):
                 {"name": "sda1", "path": "/dev/sda1", "type": "part", "fstype": "exfat", "label": "POOL CAM", "size": 100},
             ],
         }
-        plans, notes = mounts.plan_usb_mounts([system, usb], mounted=set())
+        plans, notes = mounts.plan_disk_mounts([system, usb], mounted=set())
         self.assertEqual([plan.source for plan in plans], ["/dev/sda1"])
         self.assertEqual(plans[0].target_name, "POOL-CAM")
         self.assertTrue(any("system disk" in note for note in notes))
+
+    def test_mounts_sata_nvme_and_sd_the_same_as_usb(self):
+        disks = [
+            {
+                "name": "sda",
+                "path": "/dev/sda",
+                "type": "disk",
+                "tran": "sata",
+                "children": [
+                    {"name": "sda1", "path": "/dev/sda1", "type": "part", "fstype": "ext4", "label": "DATA"},
+                ],
+            },
+            {
+                "name": "nvme0n1",
+                "path": "/dev/nvme0n1",
+                "type": "disk",
+                "tran": "nvme",
+                "children": [
+                    {"name": "nvme0n1p1", "path": "/dev/nvme0n1p1", "type": "part", "fstype": "exfat", "label": "HA"},
+                ],
+            },
+            {
+                "name": "mmcblk1",
+                "path": "/dev/mmcblk1",
+                "type": "disk",
+                "tran": "mmc",
+                "children": [
+                    {"name": "mmcblk1p1", "path": "/dev/mmcblk1p1", "type": "part", "fstype": "vfat", "label": "SDCARD"},
+                ],
+            },
+        ]
+        plans, _notes = mounts.plan_disk_mounts(disks, mounted=set())
+        self.assertEqual([plan.label for plan in plans], ["DATA", "HA", "SDCARD"])
 
     def test_skips_disk_already_mounted_on_the_host(self):
         disk = {
@@ -42,7 +75,7 @@ class MountPlanTest(unittest.TestCase):
                 {"name": "sdb1", "path": "/dev/sdb1", "type": "part", "fstype": "ext4", "label": "extra"},
             ],
         }
-        plans, notes = mounts.plan_usb_mounts([disk], mounted={"/dev/sdb1"})
+        plans, notes = mounts.plan_disk_mounts([disk], mounted={"/dev/sdb1"})
         self.assertEqual(plans, [])
         self.assertTrue(any("already mounted" in note for note in notes))
 
@@ -55,7 +88,7 @@ class MountPlanTest(unittest.TestCase):
             "label": "",
             "children": [],
         }
-        plans, _notes = mounts.plan_usb_mounts([disk], mounted=set())
+        plans, _notes = mounts.plan_disk_mounts([disk], mounted=set())
         self.assertEqual(plans[0].source, "/dev/sda")
         self.assertEqual(plans[0].target_name, "sda")
 
@@ -68,7 +101,7 @@ class MountPlanTest(unittest.TestCase):
                 {"name": "sda1", "path": "/dev/sda1", "type": "part", "fstype": "apfs", "label": "Macintosh"},
             ],
         }
-        plans, notes = mounts.plan_usb_mounts([disk], mounted=set())
+        plans, notes = mounts.plan_disk_mounts([disk], mounted=set())
         self.assertEqual(plans, [])
         self.assertTrue(any("not supported" in note for note in notes))
 

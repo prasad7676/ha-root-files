@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.4
+
+- Attached disks are listed as Disks. USB, SATA, NVMe, and SD are handled the same way.
+
 ## 1.0.3
 
 - Opening a Storage disk works when Home Assistant keeps it on the host.

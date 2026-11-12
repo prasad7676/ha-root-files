@@ -282,14 +282,14 @@ function renderPlaces() {
     }
     group.items.push(place);
   }
-  if (!groups.some((group) => group.name === "USB")) {
+  if (!groups.some((group) => group.name === "Disks")) {
     const insertAt = groups.findIndex((group) => group.name === "System");
-    groups.splice(insertAt === -1 ? groups.length : insertAt, 0, { name: "USB", items: [] });
+    groups.splice(insertAt === -1 ? groups.length : insertAt, 0, { name: "Disks", items: [] });
   }
   nav.replaceChildren();
   for (const group of groups) {
     const head = h("div", { class: "group-head" }, [h("span", {}, [group.name])]);
-    if (group.name === "USB") {
+    if (group.name === "Disks") {
       head.append(h("button", { type: "button", class: "texty", onclick: () => rescan() }, [
         state.scanning ? "Looking…" : "Rescan",
       ]));
@@ -297,7 +297,7 @@ function renderPlaces() {
     const box = h("div", { class: "group" }, [head]);
     if (!group.items.length) {
       box.append(h("p", { class: "hint" }, [
-        "Plug in a FAT, exFAT, NTFS, or ext4 drive, then Rescan. Disks added in Settings → System → Storage show up here too. Mac APFS drives do not.",
+        "Attach a FAT, exFAT, NTFS, or ext4 disk, then Rescan. USB, SATA, NVMe, and SD all show up here, including disks added in Settings → System → Storage. Mac APFS disks do not.",
       ]));
     }
     for (const place of group.items) {
