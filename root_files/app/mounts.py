@@ -250,6 +250,18 @@ def storage_from_lines(lines: list[str]) -> list[dict]:
     return list(found.values())
 
 
+def host_namespace() -> bool:
+    """True when this add-on can see the machine's own process 1.
+
+    Protection mode blocks that. Disks shared as Media or Share do not need it.
+    """
+    try:
+        comm = Path("/proc/1/comm").read_text(encoding="utf-8").strip()
+    except OSError:
+        return False
+    return comm in {"systemd", "init"}
+
+
 def _read_mount_lines() -> list[str]:
     lines: list[str] = []
     for path in (Path("/proc/self/mountinfo"), Path("/proc/mounts"), Path("/proc/1/mountinfo"), Path("/proc/1/mounts")):
@@ -336,6 +348,8 @@ def storage_mounts(lines: list[str] | None = None) -> list[dict]:
     for item in found.values():
         path = Path(item["path"])
         if _dir_device(path) is None:
+            if not host_namespace():
+                continue
             path = Path("/proc/1/root") / item["path"].lstrip("/")
             if _dir_device(path) is None:
                 continue
@@ -347,13 +361,13 @@ def storage_mounts(lines: list[str] | None = None) -> list[dict]:
 def read_options() -> dict:
     path = Path("/data/options.json")
     if not path.is_file():
-        return {"show_host": True, "mount_usb": True}
+        return {"show_host": False, "mount_usb": True}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return {"show_host": True, "mount_usb": True}
+        return {"show_host": False, "mount_usb": True}
     return {
-        "show_host": bool(data.get("show_host", True)),
+        "show_host": bool(data.get("show_host", False)),
         "mount_usb": bool(data.get("mount_usb", True)),
     }
 
@@ -405,20 +419,14 @@ def mount_host(show: bool) -> tuple[bool, str]:
     if not show:
         if is_mountpoint(HOST_ROOT):
             subprocess.run(["umount", str(HOST_ROOT)], capture_output=True, timeout=20)
-        return False, "Host root is turned off in the add-on options."
+        return False, "System files are off. Turn on Show the host system only when you need them."
     if is_mountpoint(HOST_ROOT):
         return True, "Host root is already mounted."
-    comm = ""
-    try:
-        comm = Path("/proc/1/comm").read_text(encoding="utf-8").strip()
-    except OSError:
-        pass
-    if comm not in {"systemd", "init"}:
-        who = comm or "unknown"
+    if not host_namespace():
         return False, (
-            "Host root is hidden because Protection mode is still on. "
-            "On the add-on page, turn Protection mode off, then restart. "
-            f"Process 1 is {who}."
+            "System files need Protection mode off. Disks shared as Media or Share "
+            "stay available while Protection mode is on. Turn Protection mode off, "
+            "restart, then open Host."
         )
     error = _run_mount([["mount", "--bind", "/proc/1/root", str(HOST_ROOT)]])
     if error:

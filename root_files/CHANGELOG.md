@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.6
+
+- Disks shared as Media or Share stay available with Protection mode on. Protection mode is only needed for system files.
+
 ## 1.0.5
 
 - Opening a host Storage disk no longer rewrites its path into a missing folder.

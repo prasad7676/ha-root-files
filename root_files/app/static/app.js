@@ -267,8 +267,8 @@ function applyTheme(theme) {
 
 function shortHost(place) {
   if (!place || place.available) return "Host system is visible.";
-  if ((place.reason || "").includes("Protection mode")) return "Turn Protection mode off, then restart.";
-  return place.reason || "Host system is hidden.";
+  if ((place.reason || "").includes("Protection mode")) return "System files need Protection mode off. Disks stay available.";
+  return "System files are off until you need them.";
 }
 
 function renderPlaces() {

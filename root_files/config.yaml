@@ -1,5 +1,5 @@
 name: Root File Explorer
-version: 1.0.5
+version: 1.0.6
 slug: root_files
 description: Browse Home Assistant, attached disks, and the host system from the sidebar
 url: https://github.com/prasad7676/ha-root-files
@@ -51,7 +51,7 @@ map:
     read_only: false
     path: /addon_configs
 options:
-  show_host: true
+  show_host: false
   mount_usb: true
 schema:
   show_host: bool
