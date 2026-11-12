@@ -115,9 +115,14 @@ class MountPlanTest(unittest.TestCase):
         })
         self.assertEqual(body["usage"], "media")
         self.assertEqual(body["uuid"], "6AF3-9041")
-        backup = mounts.disk_media_body({"name": "HA", "type": "disk", "usage": "backup", "uuid": "6AF3-9041"})
-        self.assertEqual(backup["usage"], "media")
+        self.assertIsNone(mounts.disk_media_body({"name": "HA", "type": "disk", "usage": "backup", "uuid": "1"}))
         self.assertIsNone(mounts.disk_media_body({"name": "HA", "type": "disk", "usage": "media", "uuid": "1"}))
+        restored = mounts.disk_usage_body(
+            {"name": "HA", "type": "disk", "usage": "media", "uuid": "6AF3-9041"},
+            "backup",
+        )
+        self.assertEqual(restored["usage"], "backup")
+        self.assertEqual(restored["uuid"], "6AF3-9041")
         self.assertIsNone(mounts.disk_media_body({"name": "nas", "type": "cifs", "usage": None}))
 
     def test_unescape_mount_spaces(self):

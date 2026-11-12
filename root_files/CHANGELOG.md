@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.9
+
+- HA is a backup disk again, and new backups go there. A backup disk cannot also stay open in Files while Protection mode is on.
+
 ## 1.0.8
 
 - A local disk set as a backup is shared as Media, so Files can open it while Protection mode stays on. New backups stay in Home Assistant.

@@ -23,6 +23,8 @@ DISK_ROOT = Path("/places/disks")
 HOST_ROOT = Path("/places/host")
 STORAGE_ROOT = Path("/places/storage")
 STATUS_PATHS = (Path("/data/mount-status.json"), Path("/tmp/root-files-mount-status.json"))
+BACKUP_RESTORE_FLAG = Path("/data/ha-backup-restored.json")
+BACKUP_DISK_NAME = "HA"
 
 
 @dataclass
@@ -442,21 +444,14 @@ def mount_host(show: bool) -> tuple[bool, str]:
     return True, "Host root mounted."
 
 
-def disk_media_body(item: dict) -> dict | None:
-    """Return a Supervisor update that shares a local disk as Media.
-
-    Media and Share already appear in the add-on. A local disk set as a
-    backup, or with no use, stays on the host and Files cannot open it
-    while Protection mode is on.
-    """
+def disk_usage_body(item: dict, usage: str) -> dict | None:
+    """Return a Supervisor update that sets a local disk to this use."""
     if not isinstance(item, dict) or item.get("type") != "disk":
         return None
-    if item.get("usage") in {"media", "share"}:
-        return None
     name = str(item.get("name") or "")
-    if not name:
+    if not name or item.get("usage") == usage:
         return None
-    body: dict = {"name": name, "type": "disk", "usage": "media"}
+    body: dict = {"name": name, "type": "disk", "usage": usage}
     if item.get("read_only") is not None:
         body["read_only"] = bool(item["read_only"])
     if item.get("uuid"):
@@ -466,6 +461,13 @@ def disk_media_body(item: dict) -> dict | None:
     else:
         return None
     return body
+
+
+def disk_media_body(item: dict) -> dict | None:
+    """Share a local disk that has no use yet. A backup disk stays a backup disk."""
+    if isinstance(item, dict) and item.get("usage") == "backup":
+        return None
+    return disk_usage_body(item, "media")
 
 
 def _supervisor(method: str, path: str, body: dict | None = None) -> tuple[dict | None, str]:
@@ -490,8 +492,55 @@ def _supervisor(method: str, path: str, body: dict | None = None) -> tuple[dict 
     return data_value if isinstance(data_value, dict) else payload, ""
 
 
+def restore_backup_disk() -> list[str]:
+    """Put HA back to the backup disk. Home Assistant cannot share that use with this app."""
+    if BACKUP_RESTORE_FLAG.is_file():
+        return []
+    listed, error = _supervisor("GET", "/mounts")
+    if error:
+        return [f"Could not read Storage: {error}"]
+    if not listed:
+        return []
+    mounts = listed.get("mounts") or []
+    item = next(
+        (
+            mount for mount in mounts
+            if isinstance(mount, dict)
+            and mount.get("type") == "disk"
+            and mount.get("name") == BACKUP_DISK_NAME
+        ),
+        None,
+    )
+    if item is None:
+        return []
+    if item.get("usage") != "backup":
+        body = disk_usage_body(item, "backup")
+        if body is None:
+            return [f"Could not put {BACKUP_DISK_NAME} back as a backup disk."]
+        _updated, put_error = _supervisor("PUT", f"/mounts/{BACKUP_DISK_NAME}", body)
+        if put_error:
+            return [f"Could not put {BACKUP_DISK_NAME} back as a backup disk: {put_error}"]
+    if listed.get("default_backup_mount") != BACKUP_DISK_NAME:
+        _options, options_error = _supervisor(
+            "POST",
+            "/mounts/options",
+            {"default_backup_mount": BACKUP_DISK_NAME},
+        )
+        if options_error:
+            return [f"{BACKUP_DISK_NAME} is a backup disk, but backups are not going there yet: {options_error}"]
+    try:
+        BACKUP_RESTORE_FLAG.write_text("{}\n", encoding="utf-8")
+    except OSError:
+        pass
+    return [
+        f"{BACKUP_DISK_NAME} is a backup disk again, and new backups go there. "
+        "Home Assistant does not share a backup disk with this app while Protection mode is on. "
+        "Turn Protection mode off and restart when you need to open it."
+    ]
+
+
 def share_unassigned_disks() -> list[str]:
-    """Make a local Storage disk show up under Media."""
+    """Make a local Storage disk with no use show up under Media. Backup disks are left alone."""
     listed, error = _supervisor("GET", "/mounts")
     if error:
         return [f"Could not read Storage: {error}"]
@@ -508,24 +557,9 @@ def share_unassigned_disks() -> list[str]:
         body = disk_media_body(item)
         if body is None:
             continue
-        if item.get("usage") == "backup" and listed.get("default_backup_mount") == name:
-            _options, options_error = _supervisor(
-                "POST",
-                "/mounts/options",
-                {"default_backup_mount": None},
-            )
-            if options_error:
-                notes.append(f"Could not move backups off {name}: {options_error}")
-                continue
         _updated, put_error = _supervisor("PUT", f"/mounts/{name}", body)
         if put_error:
             notes.append(f"Could not share {name} as Media: {put_error}")
-        elif item.get("usage") == "backup":
-            notes.append(
-                f"Shared {name} as Media instead of a backup disk. "
-                "The files stay on the disk. New backups stay in Home Assistant. "
-                "Restart the app if it is not under Disks yet."
-            )
         else:
             notes.append(f"Shared {name} as Media. Restart the app if it is not under Disks yet.")
     return notes
@@ -565,6 +599,7 @@ def mount_all() -> dict:
                 lines.append(f"Mounted {pretty} ({plan.fstype}) at {target}.")
         if not plans and not any(line.startswith("Could not list") for line in lines):
             lines.append("No extra disk needed mounting.")
+        lines.extend(restore_backup_disk())
         shared = share_unassigned_disks()
         lines.extend(shared)
         if any(line.startswith("Shared ") for line in shared):
