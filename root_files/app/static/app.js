@@ -296,8 +296,9 @@ function renderPlaces() {
     }
     const box = h("div", { class: "group" }, [head]);
     if (!group.items.length) {
+      const reason = (state.log || []).find((line) => /Shared |backup disk|No disk is visible|Could not share|Could not read Storage/.test(line));
       box.append(h("p", { class: "hint" }, [
-        "Attach a FAT, exFAT, NTFS, or ext4 disk, then Rescan. USB, SATA, NVMe, and SD all show up here, including disks added in Settings → System → Storage. Mac APFS disks do not.",
+        reason || "Attach a FAT, exFAT, NTFS, or ext4 disk, then Rescan. USB, SATA, NVMe, and SD all show up here, including disks added in Settings → System → Storage. Mac APFS disks do not.",
       ]));
     }
     for (const place of group.items) {

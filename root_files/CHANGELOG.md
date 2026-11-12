@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.7
+
+- A Storage disk with no use is shared as Media, so it stays in Files while Protection mode is on. Host system files still need Protection mode off.
+
 ## 1.0.6
 
 - Disks shared as Media or Share stay available with Protection mode on. Protection mode is only needed for system files.

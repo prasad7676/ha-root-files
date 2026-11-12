@@ -105,6 +105,20 @@ class MountPlanTest(unittest.TestCase):
         self.assertEqual(plans, [])
         self.assertTrue(any("not supported" in note for note in notes))
 
+    def test_unassigned_disk_is_shared_as_media(self):
+        body = mounts.disk_media_body({
+            "name": "HA",
+            "type": "disk",
+            "usage": None,
+            "uuid": "6AF3-9041",
+            "read_only": False,
+        })
+        self.assertEqual(body["usage"], "media")
+        self.assertEqual(body["uuid"], "6AF3-9041")
+        self.assertIsNone(mounts.disk_media_body({"name": "HA", "type": "disk", "usage": "backup", "uuid": "1"}))
+        self.assertIsNone(mounts.disk_media_body({"name": "HA", "type": "disk", "usage": "media", "uuid": "1"}))
+        self.assertIsNone(mounts.disk_media_body({"name": "nas", "type": "cifs", "usage": None}))
+
     def test_unescape_mount_spaces(self):
         self.assertEqual(mounts.unescape_mount(r"/media/My\040Disk"), "/media/My Disk")
 

@@ -1,5 +1,5 @@
 name: Root File Explorer
-version: 1.0.6
+version: 1.0.7
 slug: root_files
 description: Browse Home Assistant, attached disks, and the host system from the sidebar
 url: https://github.com/prasad7676/ha-root-files
@@ -22,6 +22,8 @@ watchdog: tcp://[HOST]:[PORT:8099]
 backup: cold
 full_access: true
 host_pid: true
+hassio_api: true
+hassio_role: manager
 apparmor: false
 privileged:
   - SYS_ADMIN

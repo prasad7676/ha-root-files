@@ -12,6 +12,9 @@ import json
 import os
 import stat
 import subprocess
+import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -251,15 +254,17 @@ def storage_from_lines(lines: list[str]) -> list[dict]:
 
 
 def host_namespace() -> bool:
-    """True when this add-on can see the machine's own process 1.
+    """True when process 1 is the machine, not this add-on.
 
-    Protection mode blocks that. Disks shared as Media or Share do not need it.
+    Protection mode keeps process 1 inside the add-on, so /proc/1/root is
+    the add-on's own files. Disks shared as Media or Share do not need this.
     """
     try:
-        comm = Path("/proc/1/comm").read_text(encoding="utf-8").strip()
+        host = os.stat("/proc/1/root")
+        here = os.stat("/")
     except OSError:
         return False
-    return comm in {"systemd", "init"}
+    return (host.st_dev, host.st_ino) != (here.st_dev, here.st_ino)
 
 
 def _read_mount_lines() -> list[str]:
@@ -348,6 +353,9 @@ def storage_mounts(lines: list[str] | None = None) -> list[dict]:
     for item in found.values():
         path = Path(item["path"])
         if _dir_device(path) is None:
+            # Only follow /proc/1/root when it is actually the machine.
+            # With Protection mode on it points at this add-on, and the
+            # host folder is not there.
             if not host_namespace():
                 continue
             path = Path("/proc/1/root") / item["path"].lstrip("/")
@@ -434,6 +442,86 @@ def mount_host(show: bool) -> tuple[bool, str]:
     return True, "Host root mounted."
 
 
+def disk_media_body(item: dict) -> dict | None:
+    """Return a Supervisor update that shares an unassigned disk as Media.
+
+    Media and Share already appear in the add-on. Backup stays a backup.
+    A disk with no use is only mounted on the host, so Files cannot open
+    it while Protection mode is on.
+    """
+    if not isinstance(item, dict) or item.get("type") != "disk":
+        return None
+    if item.get("usage") in {"media", "share", "backup"}:
+        return None
+    name = str(item.get("name") or "")
+    if not name:
+        return None
+    body: dict = {"name": name, "type": "disk", "usage": "media"}
+    if item.get("read_only") is not None:
+        body["read_only"] = bool(item["read_only"])
+    if item.get("uuid"):
+        body["uuid"] = item["uuid"]
+    elif item.get("device"):
+        body["device"] = item["device"]
+    else:
+        return None
+    return body
+
+
+def _supervisor(method: str, path: str, body: dict | None = None) -> tuple[dict | None, str]:
+    token = os.environ.get("SUPERVISOR_TOKEN", "")
+    if not token:
+        return None, ""
+    data = None if body is None else json.dumps(body).encode("utf-8")
+    request = urllib.request.Request(f"http://supervisor{path}", data=data, method=method)
+    request.add_header("Authorization", f"Bearer {token}")
+    if body is not None:
+        request.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            payload = json.loads(response.read().decode("utf-8") or "{}")
+    except (OSError, urllib.error.URLError, json.JSONDecodeError, TimeoutError) as exc:
+        return None, str(exc)
+    if not isinstance(payload, dict):
+        return None, "Supervisor returned an unexpected reply."
+    if payload.get("result") == "error":
+        return None, str(payload.get("message") or "Supervisor refused the change.")
+    data_value = payload.get("data")
+    return data_value if isinstance(data_value, dict) else payload, ""
+
+
+def share_unassigned_disks() -> list[str]:
+    """Make a Storage disk with no use show up under Media."""
+    listed, error = _supervisor("GET", "/mounts")
+    if error:
+        return [f"Could not read Storage: {error}"]
+    if not listed:
+        return []
+    notes: list[str] = []
+    mounts = listed.get("mounts") or []
+    if not isinstance(mounts, list):
+        return notes
+    for item in mounts:
+        if not isinstance(item, dict) or item.get("type") != "disk":
+            continue
+        name = str(item.get("name") or "disk")
+        if item.get("usage") == "backup":
+            notes.append(
+                f"{name} is set as a backup disk. Set it to Media in Settings → System → Storage "
+                "if it should stay in Files while Protection mode is on."
+            )
+            continue
+        body = disk_media_body(item)
+        if body is None:
+            continue
+        _updated, put_error = _supervisor("PUT", f"/mounts/{name}", body)
+        if put_error:
+            notes.append(f"Could not share {name} as Media: {put_error}")
+        else:
+            notes.append(f"Shared {name} as Media. Restart the app if it is not under Disks yet.")
+    return notes
+
+
 def mount_all() -> dict:
     options = read_options()
     lines: list[str] = []
@@ -468,7 +556,18 @@ def mount_all() -> dict:
                 lines.append(f"Mounted {pretty} ({plan.fstype}) at {target}.")
         if not plans and not any(line.startswith("Could not list") for line in lines):
             lines.append("No extra disk needed mounting.")
-        for item in storage_mounts():
+        shared = share_unassigned_disks()
+        lines.extend(shared)
+        if any(line.startswith("Shared ") for line in shared):
+            time.sleep(2)
+        found_storage = storage_mounts()
+        if not found_storage and not host_namespace():
+            lines.append(
+                "No disk is visible inside the add-on. A disk set to Media or Share shows up "
+                "with Protection mode on. Turn Protection mode off and restart only if the disk "
+                "is still missing after that."
+            )
+        for item in found_storage:
             kind = item["fstype"] or "mounted"
             problem = item.get("mount_error")
             suffix = f". {problem}" if problem else "."
