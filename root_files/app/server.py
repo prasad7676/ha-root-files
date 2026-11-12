@@ -306,9 +306,36 @@ def place_by_id(place_id: str) -> dict:
     raise FilesError("That folder is not available.", 404)
 
 
+def host_view(path: Path) -> bool:
+    text = str(path)
+    return text == "/proc/1/root" or text.startswith("/proc/1/root/")
+
+
+def anchored(path: Path) -> Path:
+    """Resolve a normal path. Leave /proc/1/root alone.
+
+    That symlink is the host root. Resolving it turns a host folder into
+    /mnt/data/... which is not mounted inside the add-on.
+    """
+    if host_view(path):
+        return path
+    return path.resolve()
+
+
+def same_file(left: Path, right: Path) -> bool:
+    try:
+        a = left.stat()
+        b = right.stat()
+    except OSError:
+        return str(anchored(left)) == str(anchored(right))
+    return a.st_dev == b.st_dev and a.st_ino == b.st_ino
+
+
 def jail(place: dict, raw: str) -> Path:
-    root = place["path"].resolve()
+    root = anchored(Path(place["path"]))
     rel = safe_rel(raw)
+    if host_view(root):
+        return root.joinpath(rel)
     target = (root / rel).resolve()
     if target != root and root not in target.parents:
         raise FilesError("That path leaves the folder.", 403)
@@ -439,7 +466,7 @@ def search(place: dict, raw: str, query: str, show_hidden: bool) -> list[dict]:
         if visited > SEARCH_DIRS or len(matches) >= SEARCH_CAP:
             break
         try:
-            rel_dir = Path(current).resolve().relative_to(root.resolve())
+            rel_dir = Path(os.path.relpath(current, root)) if host_view(root) else Path(current).resolve().relative_to(root.resolve())
         except (OSError, ValueError):
             dirs[:] = []
             continue
@@ -508,14 +535,14 @@ def make_dir(place: dict, raw: str, name: str) -> str:
 def rename(place: dict, raw: str, name: str) -> str:
     segment = safe_segment(name)
     source = jail(place, raw)
-    if source.resolve() == place["path"].resolve():
+    if same_file(source, Path(place["path"])):
         raise FilesError("The top folder cannot be renamed.", 403)
     if not source.exists() and not source.is_symlink():
         raise FilesError("That file is gone.", 404)
     current = rel_text(raw)
     parent = current.rsplit("/", 1)[0] if "/" in current else ""
     target = jail(place, join_rel(parent, segment))
-    if target.exists() and target.resolve() != source.resolve():
+    if target.exists() and not same_file(target, source):
         raise FilesError("Something with that name is already here.", 409)
     try:
         source.rename(target)
@@ -528,14 +555,14 @@ def delete_paths(place: dict, rels: list[str]) -> None:
     if not rels:
         raise FilesError("Choose a file first.")
     ordered = sorted((rel_text(rel) for rel in rels), key=lambda item: item.count("/"), reverse=True)
-    root = place["path"].resolve()
+    root = anchored(Path(place["path"]))
     for rel in ordered:
         if not rel:
             raise FilesError("The top folder cannot be deleted.", 403)
         if place["kind"] == "host" and rel in DELETE_KEEP:
             raise FilesError(f"{rel} cannot be deleted from here.", 403)
         target = jail(place, rel)
-        if target.resolve() == root:
+        if same_file(target, root):
             raise FilesError("The top folder cannot be deleted.", 403)
         try:
             if not target.exists() and not target.is_symlink():
@@ -580,24 +607,26 @@ def transfer(op: str, from_place: dict, rels: list[str], to_place: dict, to_raw:
     done = 0
     for rel in rels:
         source = jail(from_place, rel)
-        if source.resolve() == from_place["path"].resolve():
+        if same_file(source, Path(from_place["path"])):
             raise FilesError("The top folder cannot be moved.", 403)
         if not source.exists() and not source.is_symlink():
             raise FilesError("That file is gone.", 404)
         dest = dest_dir / source.name
         try:
-            if op == "cut" and dest.exists() and dest.resolve() == source.resolve():
+            if op == "cut" and dest.exists() and same_file(dest, source):
                 continue
         except OSError:
             pass
         if source.is_dir():
             try:
-                dest.resolve().relative_to(source.resolve())
+                dest_anchor = anchored(dest)
+                source_anchor = anchored(source)
+                dest_anchor.relative_to(source_anchor)
             except ValueError:
                 pass
             else:
                 raise FilesError("Cannot put a folder inside itself.", 400)
-        if dest.exists() and not (op == "cut" and dest.resolve() == source.resolve()):
+        if dest.exists() and not (op == "cut" and same_file(dest, source)):
             dest = next_name(dest)
         jail(to_place, join_rel(to_raw, dest.name))
         try:
@@ -621,10 +650,10 @@ def member_dest(dest_dir: Path, place: dict, name: str) -> Path:
     parts = [part for part in pure.parts if part not in {".", ""}]
     if not parts:
         raise FilesError("The archive contains an unsafe path.", 400)
-    root = place["path"].resolve()
+    root = anchored(Path(place["path"]))
     dest = dest_dir.joinpath(*parts)
     try:
-        rel = dest.relative_to(root)
+        rel = Path(os.path.relpath(dest, root)) if host_view(root) else dest.resolve().relative_to(root)
     except ValueError as exc:
         raise FilesError("The archive contains an unsafe path.", 400) from exc
     return jail(place, rel.as_posix())

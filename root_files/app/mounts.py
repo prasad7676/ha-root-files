@@ -274,9 +274,12 @@ def expose_storage(item: dict) -> dict:
     target = STORAGE_ROOT / (sanitize_name(item["name"]) or "disk")
     target.mkdir(parents=True, exist_ok=True)
     if not is_mountpoint(target):
-        error = _run_mount([["mount", "--bind", text, str(target)]])
-        if error:
-            return item
+        error = _run_mount([
+            ["mount", "--no-canonicalize", "--bind", text, str(target)],
+            ["mount", "-c", "--bind", text, str(target)],
+        ])
+        if error or not is_mountpoint(target):
+            return {**item, "mount_error": error or "The disk could not be attached inside the add-on."}
     return {**item, "path": str(target)}
 
 
@@ -459,7 +462,9 @@ def mount_all() -> dict:
             lines.append("No extra disk needed mounting.")
         for item in storage_mounts():
             kind = item["fstype"] or "mounted"
-            lines.append(f"Storage {item['name']} is available at {item['path']} ({kind}).")
+            problem = item.get("mount_error")
+            suffix = f". {problem}" if problem else "."
+            lines.append(f"Storage {item['name']} is available at {item['path']} ({kind}){suffix}")
     else:
         lines.append("Attached disks are not mounted. Turn that option on, then restart.")
     status = {"host_ok": host_ok, "host_message": host_message, "lines": lines[-200:]}

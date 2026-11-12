@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.5
+
+- Opening a host Storage disk no longer rewrites its path into a missing folder.
+
 ## 1.0.4
 
 - Attached disks are listed as Disks. USB, SATA, NVMe, and SD are handled the same way.
